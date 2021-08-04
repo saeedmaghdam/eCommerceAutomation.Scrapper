@@ -74,7 +74,7 @@ namespace eCommerceAutomation.Scrapper
             var consumer = new EventingBasicConsumer(_channel);
             consumer.Received += async(model, ea) =>
             {
-                await ConsumerReceivedAsync(model, ea);
+                await ConsumerReceivedAsync(model, ea, cancellationToken);
             };
 
             _channel.BasicConsume(_applicationOptions.Value.RequestQueueName, false, consumer);
@@ -92,16 +92,16 @@ namespace eCommerceAutomation.Scrapper
             } while (!cancellationToken.IsCancellationRequested);
         }
 
-        private async Task ConsumerReceivedAsync(object sender, BasicDeliverEventArgs ea)
+        private async Task ConsumerReceivedAsync(object sender, BasicDeliverEventArgs ea, CancellationToken cancellationToken)
         {
             var body = ea.Body.ToArray();
             var message = Encoding.UTF8.GetString(body);
 
             var request = JsonSerializer.Deserialize<Models.Request>(message);
-            await ProcessRequestAsync(request, ea);
+            await ProcessRequestAsync(request, ea, cancellationToken);
         }
 
-        private async Task ProcessRequestAsync(Models.Request request, BasicDeliverEventArgs ea)
+        private async Task ProcessRequestAsync(Models.Request request, BasicDeliverEventArgs ea, CancellationToken cancellationToken)
         {
             switch (request.Type)
             {
@@ -109,6 +109,20 @@ namespace eCommerceAutomation.Scrapper
                     try
                     {
                         var content = await _fetcherService.GetUrlContentAsync(request.Address);
+                        PublishResult(new Models.Response()
+                        {
+                            Content = content,
+                            RequestId = request.RequestId
+                        });
+
+                        _channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
+                    }
+                    catch { }
+                    break;
+                case Constants.RequestType.Telegram:
+                    try
+                    {
+                        var content = await _fetcherService.GetTelegramChannelContentAsync(request.Address, cancellationToken);
                         PublishResult(new Models.Response()
                         {
                             Content = content,

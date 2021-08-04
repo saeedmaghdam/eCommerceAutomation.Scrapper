@@ -2,6 +2,7 @@
 {
     public enum RequestType
     {
-        Website = 0
+        Website = 0,
+        Telegram = 1
     }
 }
