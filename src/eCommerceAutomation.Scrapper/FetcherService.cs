@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using eCommerceAutomation.Scrapper.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PuppeteerSharp;
@@ -14,6 +15,7 @@ namespace eCommerceAutomation.Scrapper
     {
         private readonly ILogger<FetcherService> _logger;
         private readonly IOptions<ApplicationOptions> _options;
+        private readonly FileRefService _fileRefService;
 
         private SemaphoreSlim _urlSemaphore = new SemaphoreSlim(3, 3);
         private SemaphoreSlim _telegramSemaphore = new SemaphoreSlim(1, 1);
@@ -39,24 +41,60 @@ function isReachedTheFirstPost() {
                 ";
         private const string IsScrollOnFirstPostJavaScriptMethodName = "isReachedTheFirstPost()";
 
-        public FetcherService(ILogger<FetcherService> logger, IOptions<ApplicationOptions> options)
+        public FetcherService(ILogger<FetcherService> logger, IOptions<ApplicationOptions> options, FileRefService fileRefService)
         {
             _logger = logger;
             _options = options;
+            _fileRefService = fileRefService;
         }
 
-        public async Task<string> GetUrlContentAsync(string url)
+        public async Task<string> GetUrlContentAsync(string url, CancellationToken cancellationToken)
         {
-            string result;
+            string content;
 
-            await _urlSemaphore.WaitAsync();
-            using (var client = new HttpClient())
+            var currentDirectory = Directory.GetCurrentDirectory();
+            var filePath = default(string);
+
+            try
             {
-                result = await client.GetStringAsync(url);
-            }
-            _urlSemaphore.Release();
+                await _urlSemaphore.WaitAsync();
 
-            return result;
+                var fileRef = await _fileRefService.GetByUrlAsync(url, cancellationToken);
+                if (fileRef != null)
+                {
+                    filePath = Path.Combine(currentDirectory, "TempData", fileRef.FileName);
+
+                    if (File.Exists(filePath))
+                    {
+                        var urlContentFileLastModifiedDateTime = System.IO.File.GetLastWriteTime(filePath);
+
+                        if ((DateTime.Now - urlContentFileLastModifiedDateTime).TotalMinutes < _options.Value.UrlContentCacheInMinutes)
+                            return await File.ReadAllTextAsync(filePath, cancellationToken);
+                    }
+                }
+
+                using (var client = new HttpClient())
+                    content = await client.GetStringAsync(url);
+
+                if (string.IsNullOrEmpty(filePath))
+                {
+                    var fileName = await _fileRefService.CreateAsync(url, cancellationToken);
+                    filePath = Path.Combine(currentDirectory, "TempData", fileName);
+                }
+
+                if (!Directory.Exists(Path.Combine(currentDirectory, "TempData")))
+                {
+                    Directory.CreateDirectory(Path.Combine(currentDirectory, "TempData"));
+                    _logger.LogInformation("Create a temp folder behind the service.");
+                }
+                await File.WriteAllLinesAsync(filePath, new[] { content }, cancellationToken);
+
+                return content;
+            }
+            finally
+            {
+                _urlSemaphore.Release();
+            }
         }
 
         public async Task<string> GetTelegramChannelContentAsync(string url, CancellationToken cancellationToken)
@@ -80,9 +118,7 @@ function isReachedTheFirstPost() {
                             _fileLastModifiedDateTime = System.IO.File.GetLastWriteTime(filePath);
 
                         if ((DateTime.Now - _fileLastModifiedDateTime).Value.TotalMinutes < _options.Value.TelegramCacheInMinutes)
-                        {
-                            content = File.ReadAllText(filePath);
-                        }
+                            content = await File.ReadAllTextAsync(filePath, cancellationToken);
                     }
                 }
                 finally
@@ -91,11 +127,7 @@ function isReachedTheFirstPost() {
                 }
 
                 if (!string.IsNullOrEmpty(content))
-                {
-                    _telegramSemaphore.Release();
-
                     return content;
-                }
 
 
                 var downloadPath = Path.Combine(currentDirectory, "Chromium");
@@ -166,7 +198,7 @@ function isReachedTheFirstPost() {
                         Directory.CreateDirectory(Path.Combine(currentDirectory, "TempData"));
                         _logger.LogInformation("Create a temp folder behind the service.");
                     }
-                    File.WriteAllText(filePath, content);
+                    await File.WriteAllTextAsync(filePath, content, cancellationToken);
                     _logger.LogInformation("Telegram's cached in a local file successfully.");
 
                     _fileLastModifiedDateTime = DateTime.Now;
@@ -176,11 +208,7 @@ function isReachedTheFirstPost() {
             }
             finally
             {
-                try
-                {
-                    _telegramSemaphore.Release();
-                }
-                catch { /* ignored */ }
+                _telegramSemaphore.Release();
             }
         }
     }

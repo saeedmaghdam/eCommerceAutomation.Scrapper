@@ -26,6 +26,12 @@
             set;
         }
 
+        public int UrlContentCacheInMinutes
+        {
+            get;
+            set;
+        }
+
         public Models.ProxyOptions ProxyOptions
         {
             get;

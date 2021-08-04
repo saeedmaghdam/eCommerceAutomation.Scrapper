@@ -25,7 +25,7 @@ namespace eCommerceAutomation.Scrapper
         private readonly IOptions<DashOptions> _options;
         private readonly IOptions<ApplicationOptions> _applicationOptions;
         private readonly FetcherService _fetcherService;
-
+        
         private readonly IConnection _connection;
         private readonly IModel _channel;
 
@@ -34,7 +34,8 @@ namespace eCommerceAutomation.Scrapper
             _logger = logger;
             _options = options;
             _applicationOptions = applicationOptions;
-
+            _fetcherService = fetcherService;
+            
             var factory = new ConnectionFactory() { Uri = new Uri(_options.Value.RabbitMqConnectionString) };
             _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
@@ -66,7 +67,6 @@ namespace eCommerceAutomation.Scrapper
                     "type", "response"
                 }
             });
-            _fetcherService = fetcherService;
         }
 
         protected override async Task StartInternallyAsync(CancellationToken cancellationToken)
@@ -108,7 +108,7 @@ namespace eCommerceAutomation.Scrapper
                 case Constants.RequestType.Website:
                     try
                     {
-                        var content = await _fetcherService.GetUrlContentAsync(request.Address);
+                        var content = await _fetcherService.GetUrlContentAsync(request.Address, cancellationToken);
                         PublishResult(new Models.Response()
                         {
                             Content = content,
