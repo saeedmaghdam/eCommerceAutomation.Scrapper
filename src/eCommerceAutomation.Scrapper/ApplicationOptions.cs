@@ -25,5 +25,11 @@
             get;
             set;
         }
+
+        public Models.ProxyOptions ProxyOptions
+        {
+            get;
+            set;
+        }
     }
 }

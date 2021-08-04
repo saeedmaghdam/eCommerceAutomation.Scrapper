@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
@@ -123,11 +124,26 @@ function isReachedTheFirstPost() {
 
                 _logger.LogInformation($"Attemping to start Chromium using executable path: {executablePath}");
 
-                var options = new LaunchOptions { Headless = true, ExecutablePath = executablePath };
+                var args = new List<string>();
+                if (_options.Value.ProxyOptions.Enabled)
+                {
+                    args.Add($"--proxy-server={_options.Value.ProxyOptions.Address}:{_options.Value.ProxyOptions.Port}");
+                }
+
+                var options = new LaunchOptions { Headless = true, ExecutablePath = executablePath, Args = args.ToArray() };
 
                 using (var browser = await Puppeteer.LaunchAsync(options))
                 using (var page = await browser.NewPageAsync())
                 {
+                    if (_options.Value.ProxyOptions.Enabled && _options.Value.ProxyOptions.UserAuthentication)
+                    {
+                        await page.AuthenticateAsync(new Credentials()
+                        {
+                            Username = _options.Value.ProxyOptions.Username,
+                            Password = _options.Value.ProxyOptions.Password
+                        });
+                    }
+
                     await page.GoToAsync(url);
 
                     await page.AddScriptTagAsync(new AddTagOptions()
@@ -160,7 +176,11 @@ function isReachedTheFirstPost() {
             }
             finally
             {
-                _telegramSemaphore.Release();
+                try
+                {
+                    _telegramSemaphore.Release();
+                }
+                catch { /* ignored */ }
             }
         }
     }
