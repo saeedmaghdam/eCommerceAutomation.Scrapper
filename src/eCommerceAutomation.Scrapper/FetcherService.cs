@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using eCommerceAutomation.Scrapper.Services;
@@ -21,6 +22,7 @@ namespace eCommerceAutomation.Scrapper
         private SemaphoreSlim _telegramSemaphore = new SemaphoreSlim(1, 1);
         private SemaphoreSlim _telegramFileSemaphore = new SemaphoreSlim(1, 1);
         private DateTime? _fileLastModifiedDateTime;
+        private readonly string _currentPath;
 
         private const string IsScrollOnFirstPostJavaScriptMethod = @"
 function isReachedTheFirstPost() {
@@ -46,13 +48,14 @@ function isReachedTheFirstPost() {
             _logger = logger;
             _options = options;
             _fileRefService = fileRefService;
+
+            _currentPath = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
         }
 
         public async Task<string> GetUrlContentAsync(string url, CancellationToken cancellationToken)
         {
             string content;
 
-            var currentDirectory = Directory.GetCurrentDirectory();
             var filePath = default(string);
 
             try
@@ -62,7 +65,7 @@ function isReachedTheFirstPost() {
                 var fileRef = await _fileRefService.GetByUrlAsync(url, cancellationToken);
                 if (fileRef != null)
                 {
-                    filePath = Path.Combine(currentDirectory, "TempData", fileRef.FileName);
+                    filePath = Path.Combine(_currentPath, "TempData", fileRef.FileName);
 
                     if (File.Exists(filePath))
                     {
@@ -79,12 +82,12 @@ function isReachedTheFirstPost() {
                 if (string.IsNullOrEmpty(filePath))
                 {
                     var fileName = await _fileRefService.CreateAsync(url, cancellationToken);
-                    filePath = Path.Combine(currentDirectory, "TempData", fileName);
+                    filePath = Path.Combine(_currentPath, "TempData", fileName);
                 }
 
-                if (!Directory.Exists(Path.Combine(currentDirectory, "TempData")))
+                if (!Directory.Exists(Path.Combine(_currentPath, "TempData")))
                 {
-                    Directory.CreateDirectory(Path.Combine(currentDirectory, "TempData"));
+                    Directory.CreateDirectory(Path.Combine(_currentPath, "TempData"));
                     _logger.LogInformation("Create a temp folder behind the service.");
                 }
                 await File.WriteAllLinesAsync(filePath, new[] { content }, cancellationToken);
@@ -101,9 +104,8 @@ function isReachedTheFirstPost() {
         {
             var content = "";
 
-            var currentDirectory = Directory.GetCurrentDirectory();
             var uri = new Uri(url);
-            var filePath = Path.Combine(currentDirectory, "TempData", $"{(uri.Host + uri.AbsolutePath).Replace("/", "_")}.txt");
+            var filePath = Path.Combine(_currentPath, "TempData", $"{(uri.Host + uri.AbsolutePath).Replace("/", "_")}.txt");
 
             try
             {
@@ -130,7 +132,7 @@ function isReachedTheFirstPost() {
                     return content;
 
 
-                var downloadPath = Path.Combine(currentDirectory, "Chromium");
+                var downloadPath = Path.Combine(_currentPath, "Chromium");
 
                 _logger.LogInformation($"Attemping to set up puppeteer to use Chromium found under directory {downloadPath} ");
 
@@ -193,9 +195,9 @@ function isReachedTheFirstPost() {
                     content = await page.GetContentAsync();
                     _logger.LogInformation("Telegram's content fetched successfully.");
 
-                    if (!Directory.Exists(Path.Combine(currentDirectory, "TempData")))
+                    if (!Directory.Exists(Path.Combine(_currentPath, "TempData")))
                     {
-                        Directory.CreateDirectory(Path.Combine(currentDirectory, "TempData"));
+                        Directory.CreateDirectory(Path.Combine(_currentPath, "TempData"));
                         _logger.LogInformation("Create a temp folder behind the service.");
                     }
                     await File.WriteAllTextAsync(filePath, content, cancellationToken);
