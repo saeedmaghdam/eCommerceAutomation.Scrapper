@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using eCommerceAutomation.Scrapper.Models;
 using eCommerceAutomation.Scrapper.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -41,6 +43,27 @@ function isReachedTheFirstPost() {
     return false;
 }
                 ";
+        private const string GetPostsJavaScriptMethod = @"
+function outerHTML(node){
+ return node.outerHTML || new XMLSerializer().serializeToString(node);
+}
+function result(){
+    let itemsList = [];
+    document.querySelectorAll('main section.tgme_channel_history > div.tgme_widget_message_wrap > div.tgme_widget_message').forEach(function(value, index){
+        let postId = value.getAttribute('data-post');
+        let textBlock = value.querySelector('div.tgme_widget_message_bubble div.tgme_widget_message_text');
+        if (textBlock != null) {
+            let textStripped = outerHTML(textBlock).replace(/<[^>]*>/g, '');
+            itemsList.push({id: postId, content: textStripped});
+        }
+    });
+
+    return itemsList;
+}
+
+result()
+";
+
         private const string IsScrollOnFirstPostJavaScriptMethodName = "isReachedTheFirstPost()";
 
         public FetcherService(ILogger<FetcherService> logger, IOptions<ApplicationOptions> options, FileRefService fileRefService)
@@ -192,7 +215,9 @@ function isReachedTheFirstPost() {
                         await Task.Delay(500);
                     } while (!results);
 
-                    content = await page.GetContentAsync();
+                    var items = await page.EvaluateExpressionAsync<List<TelegramModel>>(GetPostsJavaScriptMethod);
+                    content = JsonSerializer.Serialize(items);
+
                     _logger.LogInformation("Telegram's content fetched successfully.");
 
                     if (!Directory.Exists(Path.Combine(_currentPath, "TempData")))
