@@ -33,4 +33,8 @@
     <Folder Include="Domain\" />
     <Folder Include="Services\" />
   </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="robocopy $(TargetDir) $(SolutionDir)artifacts. /IS /S /E /XD &quot;$(TargetDir)Chromium&quot; &quot;$(TargetDir)TempData&quot; /XF &quot;$(TargetDir)appsettings.json&quot;&#xD;&#xA;if %25ERRORLEVEL%25 GEQ 8 goto failed&#xD;&#xA;GOTO success&#xD;&#xA;&#xD;&#xA;:failed&#xD;&#xA;exit 1&#xD;&#xA;&#xD;&#xA;:success&#xD;&#xA;exit 0" />
+  </Target>
 </Project>
